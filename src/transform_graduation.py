@@ -123,6 +123,52 @@ def build_graduation_cohort(pell_df: pd.DataFrame, gr_df: pd.DataFrame, inst_df:
     return result[final_cols].sort_values(["unitid", "aid_group"]).reset_index(drop=True)
 
 
+def build_historical_graduation() -> pd.DataFrame:
+    """Build the 2014–2018 entering cohorts from IPEDS 2020–2024 files."""
+    institutions = pd.read_csv(PROCESSED_DIR / "institutions.csv")
+    cohorts = []
+
+    for year in range(2020, 2025):
+        pell_df = pd.read_csv(
+            RAW_IPEDS_DIR / f"GR{year}_PELL_SSL.csv", low_memory=False
+        )
+        gr_df = pd.read_csv(
+            RAW_IPEDS_DIR / f"GR{year}.csv", low_memory=False
+        )
+
+        cohort = build_graduation_cohort(
+            pell_df, gr_df, institutions, year=year
+        )
+        if len(cohort) != 18:
+            raise ValueError(
+                f"IPEDS {year}: Expected 18 subgroup records, got {len(cohort)}"
+            )
+        if not (
+            cohort["cohort_year"].eq(year - 6).all()
+            and cohort["reporting_year"].eq(year).all()
+            and cohort["graduation_horizon"].eq(6).all()
+        ):
+            raise ValueError(f"IPEDS {year}: Invalid cohort metadata")
+
+        cohorts.append(cohort)
+        print(f"IPEDS {year}: Validated 18 subgroup records")
+
+    historical = pd.concat(cohorts, ignore_index=True)
+    key = ["unitid", "cohort_year", "graduation_horizon", "aid_group"]
+
+    if len(historical) != 90:
+        raise ValueError(f"Expected 90 historical records, got {len(historical)}")
+    if historical.duplicated(key).any():
+        raise ValueError("Duplicate historical cohort records")
+
+    historical = historical.sort_values(key).reset_index(drop=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PROCESSED_DIR / "graduation_cohorts_historical.csv"
+    historical.to_csv(out_path, index=False)
+    print(f"Saved {len(historical)} historical records to: {out_path}")
+    return historical
+
+
 if __name__ == "__main__":
     year = 2024
     
@@ -145,3 +191,6 @@ if __name__ == "__main__":
     print(f"Extracted exactly {len(fact_df)} valid cohort records.")
     print(f"Data rigorously validated against GR2024 and GR2024_PELL_SSL totals.")
     print(f"Saved analytical dataset to: {out_path}")
+
+    # Create the longitudinal dataset without changing the 2024 output.
+    build_historical_graduation()
