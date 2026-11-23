@@ -18,3 +18,6 @@ data/exports/**
 *.hyper
 *.tde
 *.twbx
+
+# Tableau temporary recovery files
+dashboards/tableau/.~*.twbr
